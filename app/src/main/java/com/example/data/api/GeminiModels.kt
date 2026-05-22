@@ -17,7 +17,14 @@ data class Content(
 
 @JsonClass(generateAdapter = true)
 data class Part(
-    val text: String? = null
+    val text: String? = null,
+    @Json(name = "inlineData") val inlineData: InlineData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class InlineData(
+    @Json(name = "mimeType") val mimeType: String,
+    @Json(name = "data") val data: String
 )
 
 @JsonClass(generateAdapter = true)
@@ -42,4 +49,14 @@ data class GeneratedHook(
     val hookText: String,
     val videoScenario: String,
     val ctaText: String
+)
+
+// Represents structured layout for multimodal image recognition
+@JsonClass(generateAdapter = true)
+data class AnalyzedProductResponse(
+    val productName: String,
+    val niche: String,
+    val usp: String,
+    val targetAudience: String,
+    val hooks: List<GeneratedHook>
 )

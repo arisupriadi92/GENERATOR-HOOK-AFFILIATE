@@ -1,5 +1,5 @@
 {
-  "name": "Affiliate Hook Generator",
+  "name": "Hook Gen - Telatenpedia",
   "description": "Generator hook bertenaga AI untuk konten promosi dan affiliate marketing.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

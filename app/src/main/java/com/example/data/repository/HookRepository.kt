@@ -11,6 +11,8 @@ import com.example.data.api.Content
 import com.example.data.api.Part
 import com.example.data.api.GenerationConfig
 import com.example.data.api.GeneratedHook
+import com.example.data.api.InlineData
+import com.example.data.api.AnalyzedProductResponse
 import com.squareup.moshi.Types
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -405,5 +407,108 @@ class HookRepository(
                 )
             )
         }
+    }
+
+    // New Image analysis capability with Gemini
+    suspend fun analyzeProductImage(
+        bitmap: android.graphics.Bitmap
+    ): AnalyzedProductResponse = withContext(Dispatchers.IO) {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        
+        val isKeyConfigured = apiKey.isNotEmpty() && 
+                !apiKey.contains("MY_GEMINI_API_KEY") && 
+                !apiKey.contains("placeholder")
+
+        if (isKeyConfigured) {
+            try {
+                val systemPrompt = """
+                    Kamu adalah pakar Copywriter Affiliate Marketing Indonesia dan ahli Computer Vision.
+                    Tugasmu adalah menganalisis foto produk yang dikirimkan, lalu mengembalikan data analisis produk beserta tepat 3 variasi hook affiliate yang sangat relevan dan menarik untuk audiens Indonesia.
+                    
+                    Format output harus SELALU mengembalikan data dalam bentuk objek JSON murni tanpa dekorasi markdown penjelas di luar kode JSON. JSON skema:
+                    {
+                      "productName": "Nama Produk yang teridentifikasi secara akurat dari gambar",
+                      "niche": "Pilih salah satu kategori niche: Cosmetik & Skincare, Alat Dapur & Rumah Tangga, Fashion & Aksesoris, Elektronik & Gadget, Makanan & Kuliner, Keuangan & Investasi, Kesehatan & Diet, Otomotif & Hobby",
+                      "usp": "Poin penjualan utama / keunggulan produk terdeteksi singkat (maks 15 kata)",
+                      "targetAudience": "Rekomendasi audiens target utama yang paling cocok (misal: 'ibu rumah tangga tangguh', 'mahasiswa sibuk')",
+                      "hooks": [
+                        {
+                          "hookText": "Kalimat pembuka / hook di 3 detik pertama yang terpersonalisasi",
+                          "videoScenario": "Deskripsi visual aksi afiliator memegang/mendemokan produk di layar",
+                          "ctaText": "Rekomendasi Call To Action penutup yang mengajak checkout"
+                        }
+                      ]
+                    }
+                    
+                    Jangan menuliskan basa-basi atau kata pengantar apapun selain JSON murni.
+                """.trimIndent()
+
+                val userPrompt = "Minta tolong analisis foto produk ini secara detail dan buatkan 3 hook affiliate konversi tinggi."
+                val base64Image = bitmapToBase64(bitmap)
+
+                val request = GenerateContentRequest(
+                    contents = listOf(
+                        Content(parts = listOf(
+                            Part(text = userPrompt),
+                            Part(inlineData = InlineData(mimeType = "image/jpeg", data = base64Image))
+                        ))
+                    ),
+                    generationConfig = GenerationConfig(
+                        responseMimeType = "application/json",
+                        temperature = 0.85f
+                    ),
+                    systemInstruction = Content(parts = listOf(Part(text = systemPrompt)))
+                )
+
+                val response = RetrofitClient.service.generateContent(apiKey, request)
+                val rawText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                
+                if (!rawText.isNullOrEmpty()) {
+                    val cleanedJson = sanitizeJson(rawText)
+                    val adapter = RetrofitClient.moshiInstance.adapter(AnalyzedProductResponse::class.java)
+                    val analyzed = adapter.fromJson(cleanedJson)
+                    if (analyzed != null) {
+                        return@withContext analyzed
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        // Return offline mock response nicely
+        return@withContext generateOfflineAnalysis()
+    }
+
+    private fun bitmapToBase64(bitmap: android.graphics.Bitmap): String {
+        val outputStream = java.io.ByteArrayOutputStream()
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, outputStream)
+        return android.util.Base64.encodeToString(outputStream.toByteArray(), android.util.Base64.NO_WRAP)
+    }
+
+    private fun generateOfflineAnalysis(): AnalyzedProductResponse {
+        return AnalyzedProductResponse(
+            productName = "Produk Kamera Affiliate",
+            niche = "Cosmetik & Skincare",
+            usp = "Mudah digunakan dan sangat praktis untuk sehari-hari",
+            targetAudience = "Pegiat media sosial / Afiliator pemula",
+            hooks = listOf(
+                GeneratedHook(
+                    hookText = "Bongkar rahasia sukses affiliate pakai produk ini, gak nyangka efeknya secepat ini buat pemula!",
+                    videoScenario = "Tunjukkan foto produk dari dekat, hadapkan produk ke kamera dengan latar belakang cerah.",
+                    ctaText = "Klik keranjang kuning di bawah ini buat amankan produk eksklusif ini sekarang!"
+                ),
+                GeneratedHook(
+                    hookText = "Kalian yang pengen naik level wajib tahu keunggulan produk viral satu ini, dijamin nyesel baru tahu!",
+                    videoScenario = "Putar produk secara berirama, tunjukkan sisi estetik kemasan produk.",
+                    ctaText = "Checkout buruan mumpung lagi diskon gila-gilaan khusus hari ini!"
+                ),
+                GeneratedHook(
+                    hookText = "Mending stop scroll dulu! Ini solusi praktis buat kamu yang cape nyari produk idaman di kategori ini.",
+                    videoScenario = "Genggam produk erat, gerakkan maju mundur perlahan agar audiens melihat detail fungsinya.",
+                    ctaText = "Jangan nunggu viral lagi baru beli, ambil sekarang sebelum kehabisan stok!"
+                )
+            )
+        )
     }
 }

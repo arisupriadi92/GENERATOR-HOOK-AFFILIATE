@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.api.GeneratedHook
+import com.example.data.api.AnalyzedProductResponse
 import com.example.data.model.SavedHook
 import com.example.data.model.PopularHook
 import com.example.data.repository.HookRepository
@@ -87,8 +88,59 @@ class HookViewModel(private val repository: HookRepository) : ViewModel() {
 
     // Generation UI States
     var isGenerating by mutableStateOf(false)
+    var isGeneratingMore by mutableStateOf(false)
     var generationError by mutableStateOf<String?>(null)
     var generatedHooks by mutableStateOf<List<GeneratedHook>>(emptyList())
+
+    // Camera/Image AI Analysis States
+    var productBitmap by mutableStateOf<android.graphics.Bitmap?>(null)
+    var isAnalyzingImage by mutableStateOf(false)
+    var imageAnalysisError by mutableStateOf<String?>(null)
+    var cameraAnalyzedResponse by mutableStateOf<com.example.data.api.AnalyzedProductResponse?>(null)
+
+    fun clearImage() {
+        productBitmap = null
+        cameraAnalyzedResponse = null
+        imageAnalysisError = null
+    }
+
+    fun analyzeImageAndGenerate(bitmap: android.graphics.Bitmap, context: android.content.Context) {
+        viewModelScope.launch {
+            isAnalyzingImage = true
+            imageAnalysisError = null
+            productBitmap = bitmap
+            generatedHooks = emptyList() // clear previous hooks to show loading
+            
+            try {
+                val result = repository.analyzeProductImage(bitmap)
+                cameraAnalyzedResponse = result
+                
+                // Populate text form inputs so user can see what was detected and can refine if desired
+                productName = result.productName
+                val validNiches = listOf(
+                    "Cosmetik & Skincare",
+                    "Alat Dapur & Rumah Tangga",
+                    "Fashion & Aksesoris",
+                    "Elektronik & Gadget",
+                    "Makanan & Kuliner",
+                    "Keuangan & Investasi",
+                    "Kesehatan & Diet",
+                    "Otomotif & Hobby"
+                )
+                selectedNiche = if (result.niche in validNiches) result.niche else "Cosmetik & Skincare"
+                uniqueSellingPoints = result.usp
+                targetAudience = result.targetAudience
+                
+                // Directly set the results as the generated hooks
+                generatedHooks = result.hooks
+                
+            } catch (e: Exception) {
+                imageAnalysisError = "Gagal menganalisis gambar: ${e.message}"
+            } finally {
+                isAnalyzingImage = false
+            }
+        }
+    }
 
     // Database Observed States
     val savedHooks: StateFlow<List<SavedHook>> = repository.savedHooks
@@ -143,6 +195,42 @@ class HookViewModel(private val repository: HookRepository) : ViewModel() {
                 generationError = "Terjadi kesalahan: ${e.message}"
             } finally {
                 isGenerating = false
+            }
+        }
+    }
+
+    fun loadMoreHooks() {
+        if (productName.isBlank()) {
+            generationError = "Nama Produk / Jasa tidak boleh kosong"
+            return
+        }
+        if (targetAudience.isBlank()) {
+            generationError = "Audiens Target Utama tidak boleh kosong"
+            return
+        }
+
+        viewModelScope.launch {
+            isGeneratingMore = true
+            generationError = null
+            try {
+                val results = repository.generateHooks(
+                    productName = productName,
+                    niche = selectedNiche,
+                    hookType = selectedHookType,
+                    platform = selectedPlatform,
+                    targetAudience = targetAudience,
+                    sellingPoints = uniqueSellingPoints,
+                    additionalNotes = if (additionalNotes.isBlank()) "Variasikan kalimat baru yang menarik dan berbeda dari sebelumnya" else additionalNotes + " (Variasikan kalimat baru yang menarik dan berbeda dari sebelumnya)"
+                )
+                if (results.isNotEmpty()) {
+                    generatedHooks = generatedHooks + results
+                } else {
+                    generationError = "Gagal memuat alternatif hook tambahan."
+                }
+            } catch (e: Exception) {
+                generationError = "Gagal memuat lebih banyak: ${e.message}"
+            } finally {
+                isGeneratingMore = false
             }
         }
     }

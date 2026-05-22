@@ -7,6 +7,7 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,6 +36,17 @@ import com.example.data.model.SavedHook
 import com.example.data.model.PopularHook
 import com.example.ui.viewmodel.HookViewModel
 import com.example.ui.theme.*
+import com.example.R
+import androidx.compose.ui.res.painterResource
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -71,17 +83,17 @@ fun HomeScreen(
                                 .background(NaturalPrimary),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Star,
-                                contentDescription = "Sparkle Icon",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
+                            androidx.compose.foundation.Image(
+                                painter = painterResource(id = R.drawable.affiliate_hook_icon_1779478713137),
+                                contentDescription = "App Logo",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
                             )
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "HookGen",
+                                text = "Hook Gen",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.5.sp
@@ -414,6 +426,302 @@ fun GeneratorTab(viewModel: HookViewModel, context: Context) {
                             color = NaturalSecondaryText,
                             lineHeight = 14.sp
                         )
+                    }
+                }
+            }
+        }
+
+        // AI Photo Analyzer Section!
+        item {
+            val cameraLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.TakePicturePreview()
+            ) { bitmap ->
+                if (bitmap != null) {
+                    viewModel.analyzeImageAndGenerate(bitmap, context)
+                }
+            }
+
+            val permissionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestPermission()
+            ) { isGranted ->
+                if (isGranted) {
+                    cameraLauncher.launch(null)
+                } else {
+                    Toast.makeText(context, "Izin kamera diperlukan untuk mengambil foto produk.", Toast.LENGTH_LONG).show()
+                }
+            }
+
+            val checkAndLaunchCamera = {
+                val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.CAMERA
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                
+                if (hasPermission) {
+                    cameraLauncher.launch(null)
+                } else {
+                    permissionLauncher.launch(android.Manifest.permission.CAMERA)
+                }
+            }
+
+            val galleryLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.GetContent()
+            ) { uri ->
+                if (uri != null) {
+                    try {
+                        val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            val source = ImageDecoder.createSource(context.contentResolver, uri)
+                            ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                            }
+                        } else {
+                            @Suppress("DEPRECATION")
+                            MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+                        }
+                        val softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+                        viewModel.analyzeImageAndGenerate(softwareBitmap, context)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Gagal memuat gambar: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = NaturalContainer
+                ),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, NaturalPillBorder, RoundedCornerShape(16.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(NaturalPrimary.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CameraAlt,
+                                    contentDescription = "Analisis Foto",
+                                    tint = NaturalPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "AI Pindai Foto Produk",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = NaturalOnBackground
+                                )
+                                Text(
+                                    text = "Foto produk langsung untuk analisis instan",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = NaturalSecondaryText
+                                )
+                            }
+                        }
+                        
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(HighlightGreenBg)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "Instan AI",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = HighlightGreenText
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = NaturalPillBorder.copy(alpha = 0.5f), thickness = 1.dp)
+
+                    val bitmap = viewModel.productBitmap
+                    if (bitmap != null) {
+                        // Image Preview with analysis state overlay
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(NaturalTextFieldBg),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            androidx.compose.foundation.Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "Pratinjau Foto Produk",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                            )
+
+                            if (viewModel.isAnalyzingImage) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.6f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(32.dp))
+                                        Text(
+                                            text = "Model AI sedang menganalisis gambar...",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (viewModel.imageAnalysisError != null) {
+                            Text(
+                                text = viewModel.imageAnalysisError ?: "",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        if (!viewModel.isAnalyzingImage && viewModel.cameraAnalyzedResponse != null) {
+                            val res = viewModel.cameraAnalyzedResponse!!
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = HighlightGreenBg.copy(alpha = 0.4f)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(0.5.dp, HighlightGreenText.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "✅ Analisis AI Selesai!",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = HighlightGreenText
+                                    )
+                                    Text(
+                                        text = "• Nama: ${res.productName}\n• Niche: ${res.niche}\n• USP: ${res.usp}\n• Target: ${res.targetAudience}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = NaturalOnBackground,
+                                        lineHeight = 14.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { viewModel.clearImage() },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = CoralRed),
+                                border = BorderStroke(1.dp, CoralRed.copy(alpha = 0.5f)),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "Hapus", modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Hapus Foto", fontSize = 12.sp)
+                            }
+
+                            Button(
+                                onClick = {
+                                    // Re-trigger analysis
+                                    viewModel.analyzeImageAndGenerate(bitmap, context)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = NaturalPrimary),
+                                enabled = !viewModel.isAnalyzingImage,
+                                modifier = Modifier.weight(1.2f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Ulangi", tint = Color.White, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Analisis Ulang", fontSize = 12.sp, color = Color.White)
+                            }
+                        }
+                    } else {
+                        // Empty photo placeholder
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(NaturalTextFieldBg, RoundedCornerShape(12.dp))
+                                .border(1.dp, NaturalPillBorder, RoundedCornerShape(12.dp))
+                                .clickable { checkAndLaunchCamera() }
+                                .padding(vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(30.dp))
+                                    .background(NaturalPrimary.copy(alpha = 0.1f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CameraAlt,
+                                    contentDescription = "Pilih Gambar",
+                                    tint = NaturalPrimary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "Ketuk untuk mengambil foto produk",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = NaturalOnBackground
+                                )
+                                Text(
+                                    text = "Mendukung jepretan kamera langsung atau pilih dari galeri",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NaturalMutedText
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                onClick = { checkAndLaunchCamera() },
+                                colors = ButtonDefaults.buttonColors(containerColor = NaturalPrimary),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.CameraAlt, contentDescription = "Kamera", modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Ambil Foto", fontSize = 12.sp, color = Color.White)
+                            }
+
+                            OutlinedButton(
+                                onClick = { galleryLauncher.launch("image/*") },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = NaturalPrimary),
+                                border = BorderStroke(1.dp, NaturalPrimary.copy(alpha = 0.5f)),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.Image, contentDescription = "Galeri", modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Pilih Galeri", fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
             }
@@ -924,6 +1232,73 @@ fun GeneratorTab(viewModel: HookViewModel, context: Context) {
                         viewModel = viewModel,
                         context = context
                     )
+                }
+
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (viewModel.isGeneratingMore) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(NaturalContainer)
+                                    .border(1.dp, NaturalPillBorder, RoundedCornerShape(12.dp))
+                                    .padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        color = NaturalPrimary,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = "Membuat lebih banyak hook viral...",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = FontWeight.Medium,
+                                            letterSpacing = 0.2.sp
+                                        ),
+                                        color = NaturalSecondaryText
+                                    )
+                                }
+                            }
+                        } else {
+                            Button(
+                                onClick = { viewModel.loadMoreHooks() },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = NaturalContainer,
+                                    contentColor = NaturalOnBackground
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, NaturalPillBorder, RoundedCornerShape(12.dp)),
+                                contentPadding = PaddingValues(vertical = 12.dp, horizontal = 16.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Load More Icon",
+                                    tint = NaturalPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Muat Lebih Banyak Hook",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = NaturalOnBackground
+                                )
+                            }
+                        }
+                    }
                 }
             } else {
                 item {
@@ -2016,18 +2391,18 @@ fun GoogleLoginScreen(
                     .background(NaturalPrimary),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Star,
-                    contentDescription = "Sparkle Icon Large",
-                    tint = Color.White,
-                    modifier = Modifier.size(44.dp)
+                androidx.compose.foundation.Image(
+                    painter = painterResource(id = R.drawable.affiliate_hook_icon_1779478713137),
+                    contentDescription = "App Logo Large",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
                 )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Welcome to HookGen AI Studio",
+                text = "Welcome to Hook Gen\nTelatenpedia",
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.5.sp
@@ -2145,7 +2520,7 @@ fun GoogleLoginScreen(
                             color = NaturalOnBackground
                         )
                         Text(
-                            text = "ke aplikasi HookGen AI Studio",
+                            text = "ke aplikasi Hook Gen - Telatenpedia",
                             style = MaterialTheme.typography.bodySmall,
                             color = NaturalSecondaryText
                         )
