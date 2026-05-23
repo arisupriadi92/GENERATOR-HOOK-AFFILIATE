@@ -26,6 +26,40 @@ class HookRepository(
     val savedHooks: Flow<List<SavedHook>> = hookDao.getAllSavedHooks()
     val popularHooks: Flow<List<PopularHook>> = popularHookDao.getAllPopularHooksSorted()
 
+    fun isApiKeyConfigured(): Boolean {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        return apiKey.isNotEmpty() && 
+                !apiKey.contains("MY_GEMINI_API_KEY") && 
+                !apiKey.contains("placeholder")
+    }
+
+    suspend fun testApiKeyConnection(): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        if (!isApiKeyConfigured()) {
+            return@withContext Pair(false, "API Key belum dikonfigurasi di Secrets")
+        }
+        try {
+            val tinyRequest = GenerateContentRequest(
+                contents = listOf(Content(parts = listOf(Part(text = "Verify connection. Respond with the word OK immediately.")))),
+                generationConfig = GenerationConfig(
+                    temperature = 0.1f,
+                    responseMimeType = "text/plain"
+                )
+            )
+            val response = RetrofitClient.service.generateContent(apiKey, tinyRequest)
+            val textResult = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+            if (!textResult.isNullOrBlank()) {
+                return@withContext Pair(true, "API Key Valid & Dapat Digunakan")
+            } else {
+                return@withContext Pair(false, "API mengembalikan respon kosong")
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            val cleanErrorMessage = e.localizedMessage ?: e.message ?: "Koneksi salah atau kunci tidak sah"
+            return@withContext Pair(false, "Kegagalan Verifikasi: $cleanErrorMessage")
+        }
+    }
+
     suspend fun insertHook(hook: SavedHook) {
         hookDao.insertHook(hook)
     }

@@ -6,6 +6,21 @@ plugins {
   alias(libs.plugins.secrets)
 }
 
+// Dynamically generate the .env file at compile-time using the environment variables injected by AI Studio.
+// This bridges the AI Studio Secrets panel variables with the Secrets Gradle Plugin.
+val envFile = file("${rootDir}/.env")
+val apiKeyFromEnv = (System.getenv("GEMINI_API_KEY") ?: "")
+    .ifEmpty { System.getenv("GEMINI_API") ?: "" }
+    .ifEmpty { System.getenv("API_KEY") ?: "" }
+    .trim()
+
+if (apiKeyFromEnv.isNotEmpty()) {
+  logger.quiet("Secrets: Found Gemini API key in environment variables (length: ${apiKeyFromEnv.length})")
+  envFile.writeText("GEMINI_API_KEY=$apiKeyFromEnv\n")
+} else {
+  logger.quiet("Secrets: No Gemini API key found in environment variables. Offline fallback will remain active.")
+}
+
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }

@@ -104,15 +104,37 @@ class HookViewModel(private val repository: HookRepository) : ViewModel() {
         imageAnalysisError = null
     }
 
+    private fun scaleBitmapDown(bitmap: android.graphics.Bitmap, maxDimension: Int): android.graphics.Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width <= maxDimension && height <= maxDimension) {
+            return bitmap
+        }
+        val ratio = width.toFloat() / height.toFloat()
+        val newWidth: Int
+        val newHeight: Int
+        if (width > height) {
+            newWidth = maxDimension
+            newHeight = (maxDimension / ratio).toInt()
+        } else {
+            newHeight = maxDimension
+            newWidth = (maxDimension * ratio).toInt()
+        }
+        return android.graphics.Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+    }
+
     fun analyzeImageAndGenerate(bitmap: android.graphics.Bitmap, context: android.content.Context) {
         viewModelScope.launch {
             isAnalyzingImage = true
             imageAnalysisError = null
-            productBitmap = bitmap
+            
+            // Downscale to prevent OutOfMemoryError
+            val scaled = scaleBitmapDown(bitmap, 1024)
+            productBitmap = scaled
             generatedHooks = emptyList() // clear previous hooks to show loading
             
             try {
-                val result = repository.analyzeProductImage(bitmap)
+                val result = repository.analyzeProductImage(scaled)
                 cameraAnalyzedResponse = result
                 
                 // Populate text form inputs so user can see what was detected and can refine if desired
@@ -157,11 +179,43 @@ class HookViewModel(private val repository: HookRepository) : ViewModel() {
             initialValue = emptyList()
         )
 
+    // API Testing States
+    var apiKeyTestStatus by mutableStateOf("Untested") // "Untested", "Testing", "Valid", "Invalid", "NotConfigured"
+        private set
+    var apiKeyTestDetail by mutableStateOf("")
+        private set
+
+    fun runApiKeyTest() {
+        if (!isApiKeyConfigured()) {
+            apiKeyTestStatus = "NotConfigured"
+            apiKeyTestDetail = "API Key belum diatur di Secrets. Mode Demo Offline aktif."
+            return
+        }
+        viewModelScope.launch {
+            apiKeyTestStatus = "Testing"
+            apiKeyTestDetail = "Sedang menguji koneksi API Key ke server Gemini..."
+            val (success, message) = repository.testApiKeyConnection()
+            if (success) {
+                apiKeyTestStatus = "Valid"
+                apiKeyTestDetail = message
+            } else {
+                apiKeyTestStatus = "Invalid"
+                apiKeyTestDetail = message
+            }
+        }
+    }
+
     init {
         // Run database seeding for Popular Hooks on VM initialization
         viewModelScope.launch {
             repository.checkAndSeedPopularHooks()
         }
+        // Run initial automatic API key check on startup
+        runApiKeyTest()
+    }
+
+    fun isApiKeyConfigured(): Boolean {
+        return repository.isApiKeyConfigured()
     }
 
     fun generateHooks() {

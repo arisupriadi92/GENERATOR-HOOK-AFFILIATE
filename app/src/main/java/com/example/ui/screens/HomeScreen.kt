@@ -349,6 +349,75 @@ fun HomeScreen(
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun GeneratorTab(viewModel: HookViewModel, context: Context) {
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            viewModel.analyzeImageAndGenerate(bitmap, context)
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            cameraLauncher.launch(null)
+        } else {
+            Toast.makeText(context, "Izin kamera diperlukan untuk mengambil foto produk.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    val source = ImageDecoder.createSource(context.contentResolver, uri)
+                    ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                        val width = info.size.width
+                        val height = info.size.height
+                        if (width > 1024 || height > 1024) {
+                            val ratio = width.toFloat() / height.toFloat()
+                            val targetWidth: Int
+                            val targetHeight: Int
+                            if (width > height) {
+                                targetWidth = 1024
+                                targetHeight = (1024 / ratio).toInt()
+                            } else {
+                                targetHeight = 1024
+                                targetWidth = (1024 * ratio).toInt()
+                            }
+                            decoder.setTargetSize(targetWidth, targetHeight)
+                        }
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+                }
+                val softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+                viewModel.analyzeImageAndGenerate(softwareBitmap, context)
+            } catch (t: Throwable) {
+                Toast.makeText(context, "Gagal memuat gambar: ${t.message}", Toast.LENGTH_SHORT).show()
+                t.printStackTrace()
+            }
+        }
+    }
+
+    val checkAndLaunchCamera = {
+        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.CAMERA
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        
+        if (hasPermission) {
+            cameraLauncher.launch(null)
+        } else {
+            permissionLauncher.launch(android.Manifest.permission.CAMERA)
+        }
+    }
+
     var expandedNiche by remember { mutableStateOf(false) }
 
     val niches = listOf(
@@ -384,6 +453,119 @@ fun GeneratorTab(viewModel: HookViewModel, context: Context) {
         contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        // API Key Status Alert (Show ONLY if not configured)
+        if (!viewModel.isApiKeyConfigured()) {
+            item {
+                var showHelpDialog by remember { mutableStateOf(false) }
+                
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF2D1616) // Warm/Dark Red warning container
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showHelpDialog = true }
+                        .border(1.dp, Color(0xFF5E2A2A), RoundedCornerShape(16.dp))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF451A1A)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Peringatan API Key",
+                                tint = CoralRed,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "⚠️ Mode Demo Offline Aktif",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = NaturalOnBackground
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                Text(
+                                    text = "Petunjuk ↗",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = NaturalPrimary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "AI Generator berjalan offline menggunakan formula template karena API Key belum diatur di Secrets. Ketuk di sini untuk petunjuk aktivasi.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NaturalSecondaryText,
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+                }
+
+                if (showHelpDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showHelpDialog = false },
+                        title = {
+                            Text(
+                                "Cara Mengaktifkan Keaslian AI",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = NaturalOnBackground
+                            )
+                        },
+                        text = {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    "Aplikasi Hook Gen - Telatenpedia mendukung otomatisasi kecerdasan buatan Gemini, tetapi Anda perlu melakukan langkah-langkah berikut terlebih dahulu di panel samping Google AI Studio:",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = NaturalSecondaryText
+                                )
+                                Text(
+                                    "1. Di tab samping kiri panel Google AI Studio, cari tombol bernama \"Secrets\" (ikon kunci gembok).\n" +
+                                    "2. Tambahkan variabel rahasia (Secret) baru dengan nama kunci:\n" +
+                                    "   👉 GEMINI_API_KEY\n" +
+                                    "3. Isi nilainya dengan API Key Gemini Anda yang valid (dapat diperoleh dari AI Studio).\n" +
+                                    "4. Sistem build otomatis di latar belakang akan menyinkronkan kunci tersebut langsung ke aplikasi saat kompilasi berjalan ulang.",
+                                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
+                                    color = NaturalSecondaryText
+                                )
+                                Text(
+                                    "Setelah kunci dikonfigurasi di panel Secrets, silakan lakukan perubahan kecil lalu klik \"Build\" / \"Kompilasi Ulang\" agar sistem mengaktifkan fitur kecerdasan buatan Gemini secara penuh.",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                    color = HighlightYellowText
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = { showHelpDialog = false },
+                                colors = ButtonDefaults.buttonColors(containerColor = NaturalPrimary)
+                            ) {
+                                Text("Saya Mengerti", color = Color.White)
+                            }
+                        },
+                        containerColor = NaturalContainer,
+                        textContentColor = NaturalOnBackground,
+                        titleContentColor = NaturalOnBackground,
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                }
+            }
+        }
+
         // Tips banner card
         item {
             Card(
@@ -433,59 +615,6 @@ fun GeneratorTab(viewModel: HookViewModel, context: Context) {
 
         // AI Photo Analyzer Section!
         item {
-            val cameraLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.TakePicturePreview()
-            ) { bitmap ->
-                if (bitmap != null) {
-                    viewModel.analyzeImageAndGenerate(bitmap, context)
-                }
-            }
-
-            val permissionLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.RequestPermission()
-            ) { isGranted ->
-                if (isGranted) {
-                    cameraLauncher.launch(null)
-                } else {
-                    Toast.makeText(context, "Izin kamera diperlukan untuk mengambil foto produk.", Toast.LENGTH_LONG).show()
-                }
-            }
-
-            val checkAndLaunchCamera = {
-                val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-                    context,
-                    android.Manifest.permission.CAMERA
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                
-                if (hasPermission) {
-                    cameraLauncher.launch(null)
-                } else {
-                    permissionLauncher.launch(android.Manifest.permission.CAMERA)
-                }
-            }
-
-            val galleryLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.GetContent()
-            ) { uri ->
-                if (uri != null) {
-                    try {
-                        val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            val source = ImageDecoder.createSource(context.contentResolver, uri)
-                            ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
-                                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                            }
-                        } else {
-                            @Suppress("DEPRECATION")
-                            MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
-                        }
-                        val softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-                        viewModel.analyzeImageAndGenerate(softwareBitmap, context)
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "Gagal memuat gambar: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = NaturalContainer
